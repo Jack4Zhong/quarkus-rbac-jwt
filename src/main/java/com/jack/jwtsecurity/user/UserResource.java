@@ -1,7 +1,9 @@
 package com.jack.jwtsecurity.user;
 
 
+import com.jack.jwtsecurity.user.exception.UserNotFoundException;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -25,7 +27,7 @@ public class UserResource {
     @GET
     @Path("/{id}")
     public Response getUserById(@PathParam("id") Long id) {
-        User existingUser =  service.getUserById(id);
+        User existingUser =  service.getUserById(id).orElseThrow( () -> new UserNotFoundException("User not Found by Id"));
         return Response.ok(existingUser).build();
     }
 
@@ -43,12 +45,7 @@ public class UserResource {
     public Response updateUser(@PathParam("id") Long id, UserDto userDto) {
 
         User user;
-        try {
-            user = service.updateUser(id, userDto);
-        } catch (NotFoundException ex){
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-//        return Response.status(Response.Status.NO_CONTENT).build();
+        user = service.updateUser(id, userDto);
         return Response.ok(user).build();
     }
 

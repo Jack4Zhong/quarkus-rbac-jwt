@@ -2,6 +2,7 @@ package com.jack.jwtsecurity.user;
 
 
 import com.jack.jwtsecurity.auth.UserLogin;
+import com.jack.jwtsecurity.user.exception.UserNotFoundException;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -10,6 +11,7 @@ import jakarta.ws.rs.NotFoundException;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 
 @ApplicationScoped
 public class UserService {
@@ -28,10 +30,9 @@ public class UserService {
     }
 
     // Get user by ID
-    public User getUserById(Long id) {
+    public Optional<User> getUserById(Long id) {
         User user = User.findById(id);
-
-        return user.enabled ? user : null;
+        return Optional.ofNullable(user.enabled ? user : null);
     }
 
     public User getUserByEmail(String email) {
@@ -69,7 +70,7 @@ public class UserService {
     public User updateUser(Long id, UserDto userDto) {
         User user = User.findById(id);
         if (user == null || !user.enabled) {
-            throw new NotFoundException("User not found");
+            throw new UserNotFoundException("User not found, user is disabled");
         }
         user.login = userDto.login();
         user.email = userDto.email();
@@ -83,8 +84,8 @@ public class UserService {
     @Transactional
     public void disableUser(Long id) {
         User user = User.findById(id);
-        if (user == null) {
-            throw new NotFoundException("User not found");
+        if (user == null || !user.enabled) {
+            throw new UserNotFoundException("User not found, user is disabled");
         }
         user.enabled = false;
         user.persist();

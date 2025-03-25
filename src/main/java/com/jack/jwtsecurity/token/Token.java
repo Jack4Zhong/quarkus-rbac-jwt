@@ -16,9 +16,12 @@ public class Token extends BaseEntity {
     @Enumerated(EnumType.STRING)
     public TokenType tokenType = TokenType.BEARER;
 
+    @Enumerated(EnumType.STRING)
+    public TokenSpec tokenSpec;
+
     public boolean revoked = false;
 
-    public boolean expired = false;
+//    public boolean expired = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")

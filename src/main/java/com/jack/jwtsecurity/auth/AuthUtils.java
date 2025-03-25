@@ -11,15 +11,19 @@ import org.jose4j.jws.AlgorithmIdentifiers;
 import org.jose4j.jws.JsonWebSignature;
 import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwt.NumericDate;
+import org.jose4j.jwt.consumer.InvalidJwtException;
 import org.jose4j.jwt.consumer.JwtConsumer;
 import org.jose4j.jwt.consumer.JwtConsumerBuilder;
 import org.jose4j.jwt.consumer.JwtContext;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -36,10 +40,37 @@ public class AuthUtils {
     @ConfigProperty(name = "mp.jwt.verify.publickey.location")
     String publicKeyLocation;
 
-    public JwtClaims parseToken(String token) throws Exception {
-        // TODO Parser token
-        return null;
+    public JwtClaims parseToken(String token) throws InvalidJwtException, IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+        PublicKey publicKey = readPublicKey("/"+publicKeyLocation);
+
+        LOGGER.info("publicKey: " + publicKey);
+
+        JwtConsumer jwtConsumer = new JwtConsumerBuilder()
+                .setVerificationKey(publicKey)
+                .setRequireIssuedAt()
+                .setExpectedType(true, "JWT")
+                .setSkipDefaultAudienceValidation()
+                .build();
+
+        JwtContext jwtContext = jwtConsumer.process(token);
+        return jwtContext.getJwtClaims();
     }
+
+
+    public PublicKey readPublicKey(final String pemResName) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+        InputStream is = AuthUtils.class.getResourceAsStream(pemResName);
+        byte[] tmp = new byte[4096];
+        int length = is.read(tmp);
+        return decodePublicKey(new String(tmp, 0, length, StandardCharsets.UTF_8));
+    }
+
+    public PublicKey decodePublicKey(final String pemEncoded) throws NoSuchAlgorithmException, InvalidKeySpecException {
+        byte[] encodedBytes = toEncodedBytes(pemEncoded);
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(encodedBytes);
+        KeyFactory kf = KeyFactory.getInstance("RSA");
+        return kf.generatePublic(keySpec);
+    }
+
 
 
     public  String generateTokenString(JwtClaims claims) throws Exception {
@@ -70,7 +101,13 @@ public class AuthUtils {
         return jws.getCompactSerialization();
     }
 
-
+    /**
+     * Read a PEM encoded private key from the classpath
+     *
+     * @param pemResName - key file resource name
+     * @return PrivateKey
+     * @throws Exception on decode failure
+     */
     public PrivateKey readPrivateKey(final String pemResName) throws Exception {
         InputStream is = AuthUtils.class.getResourceAsStream(pemResName);
         byte[] tmp = new byte[4096];
@@ -79,8 +116,14 @@ public class AuthUtils {
         return decodePrivateKey(new String(tmp, 0, length, StandardCharsets.UTF_8));
     }
 
-
-    public  PrivateKey decodePrivateKey(final String pemEncoded) throws Exception {
+    /**
+     * Decode a PEM encoded private key string to an RSA PrivateKey
+     *
+     * @param pemEncoded - PEM string for private key
+     * @return PrivateKey
+     * @throws Exception on decode failure
+     */
+    public  PrivateKey decodePrivateKey(final String pemEncoded) throws NoSuchAlgorithmException, InvalidKeySpecException {
         byte[] encodedBytes = toEncodedBytes(pemEncoded);
 
         PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encodedBytes);

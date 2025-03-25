@@ -16,6 +16,8 @@ public class User extends BaseEntity {
     public String login;
     @Column(unique = true, nullable = false)
     public String email;
+
+    @JsonIgnore
     public String password;
 
     public boolean enabled= true;

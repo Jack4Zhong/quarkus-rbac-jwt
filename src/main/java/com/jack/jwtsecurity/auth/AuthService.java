@@ -1,22 +1,29 @@
 package com.jack.jwtsecurity.auth;
 
 
+import com.jack.jwtsecurity.auth.exception.JwtAuthException;
 import com.jack.jwtsecurity.token.Token;
 import com.jack.jwtsecurity.token.TokenService;
+import com.jack.jwtsecurity.token.exception.TokenNotFoundException;
 import com.jack.jwtsecurity.user.User;
 import com.jack.jwtsecurity.user.UserService;
+import com.jack.jwtsecurity.user.exception.UserNotFoundException;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.core.SecurityContext;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.jwt.Claims;
 import org.jboss.logmanager.Logger;
 import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwt.NumericDate;
+import org.jose4j.jwt.consumer.InvalidJwtException;
 
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,6 +40,9 @@ public class AuthService {
     @Inject
     TokenService tokenService;
 
+    @Inject
+    SecurityIdentity securityIdentity;
+
 
     @ConfigProperty(name = "quarkus.smallrye-jwt.token.expiration")
     float ACCESS_TOKEN_EXPIRE_TIME;
@@ -46,16 +56,22 @@ public class AuthService {
     final String BEARER_TOKEN_PREFIX = "Bearer ";
     @Inject
     UserService userService;
+    @Inject
+    SecurityContext securityContext;
 
 
-//    public String generateUserToken(String email, String username) {
-//        return generateAccessToken(email, username, List.of(RoleType.USER));
-//    }
-//
-//    public String generateManagerToken(String serviceId, String serviceName) {
-//        return generateAccessToken(serviceId,serviceName, List.of(RoleType.MANAGER));
-//    }
+    public String getEmailFromToken(String token) {
+        String email = null;
+        try {
+            JwtClaims claims = authUtils.parseToken(token);
 
+            Map<String, Object> claimsMap = claims.getClaimsMap();
+            email = (String) claimsMap.get("sub");
+        } catch ( InvalidJwtException | NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+            throw new JwtAuthException(e.getMessage());
+        }
+        return email;
+    }
 
     public User validateRefreshToken(String refreshToken) {
         LOGGER.info("Refresh token: " + refreshToken);
@@ -79,15 +95,15 @@ public class AuthService {
             user = userService.getUserByEmail(email);
 
             if (user == null) {
-                throw new NotFoundException("The user does not exist");
+                throw new UserNotFoundException("The user does not exist");
             }
 
             if (expirationDate.isBefore(NumericDate.now())) {
-                throw new NotFoundException("The token expired");
+                throw new TokenNotFoundException("The token expired");
             }
 
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new JwtAuthException(e.getMessage());
         }
 
         return user;
@@ -95,8 +111,10 @@ public class AuthService {
 
     @Transactional
     public void logout(String accessToken) {
+
         Token existingToken = tokenService.findToken(accessToken);
-        tokenService.disableToken(existingToken);
+        User user = existingToken.user;
+        tokenService.revokeAllUserTokens(user);
     }
 
     public String generateAccessToken(String subject, String name, List<String> roles) {
@@ -116,7 +134,7 @@ public class AuthService {
             return token;
         } catch (Exception e) {
 //            e.printStackTrace();
-            throw new RuntimeException(e);
+            throw new JwtAuthException(e.getMessage());
         }
     }
 

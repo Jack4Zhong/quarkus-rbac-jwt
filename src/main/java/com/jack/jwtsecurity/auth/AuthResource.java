@@ -1,24 +1,20 @@
 package com.jack.jwtsecurity.auth;
 
-
 import com.jack.jwtsecurity.token.TokenResponse;
 import com.jack.jwtsecurity.token.TokenService;
+import com.jack.jwtsecurity.token.TokenSpec;
 import com.jack.jwtsecurity.user.RoleService;
 import com.jack.jwtsecurity.user.User;
 import com.jack.jwtsecurity.user.UserDto;
 import com.jack.jwtsecurity.user.UserService;
 import jakarta.inject.Inject;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
-import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logmanager.Logger;
 
 import java.io.IOException;
-
 
 
 @Path("/auth")
@@ -42,17 +38,15 @@ public class AuthResource {
 
     final static String BEARER_TOKEN_PREFIX = "Bearer ";
 
-
     @POST
     @Path("/register")
     @Transactional
     public Response register(UserDto userDto) {
         User existingUser = userService.getUserByEmail(userDto.email());
         if (existingUser != null) {
-            return Response.status(Response.Status.CONFLICT).build();
+            return Response.status(Response.Status.CONFLICT).entity("This Email has been existed in system").build();
         }
         User newUser = userService.createUser(userDto);
-        System.out.println("User created");
         return Response.status(Response.Status.CREATED).entity(newUser).build();
     }
 
@@ -63,15 +57,16 @@ public class AuthResource {
         User existingUser = userService.validateUserByLogin(login);
         if (existingUser == null) {
 //            throw new WebApplicationException(Response.status(404).entity("No user found or password is incorrect").build());
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+            return Response.status(Response.Status.UNAUTHORIZED).entity("User is not existed in the system").build();
         }
 
         String accessToken = authService.generateAccessToken(existingUser.email, existingUser.password, roleService.rolesToList(existingUser.roles));
 
         tokenService.revokeAllUserTokens(existingUser);
-        tokenService.saveToken(accessToken, existingUser);
+        tokenService.saveToken(accessToken, existingUser, TokenSpec.ACCESS_TOKEN);
 
         String refreshToken = authService.generateRefreshToken(existingUser.email, existingUser.password);
+        tokenService.saveToken(refreshToken, existingUser, TokenSpec.REFRESH_TOKEN);
 
         return Response.ok(new TokenResponse(accessToken,refreshToken)).build();
     }
@@ -81,16 +76,18 @@ public class AuthResource {
     @Path("/refresh-token")
     public Response refreshToken( @HeaderParam("Authorization") String authHeader) throws IOException {
 
-        if (authHeader == null || !authHeader.startsWith(BEARER_TOKEN_PREFIX)) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
-        }
-        String refreshToken = authHeader.substring(BEARER_TOKEN_PREFIX.length());
+        String refreshToken = tokenService.getBearerToken(authHeader);
+
         User validatedUser = authService.validateRefreshToken(refreshToken);
         if (validatedUser == null) {
-            return Response.status(Response.Status.UNAUTHORIZED).build();
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity("Refresh Token has been expired, please login again").build();
         }
         String accessToken = authService.generateAccessToken(validatedUser.email, validatedUser.password, roleService.rolesToList(validatedUser.roles));
+        tokenService.saveToken(accessToken, validatedUser, TokenSpec.ACCESS_TOKEN);
+
         return Response.ok(new TokenResponse(accessToken,refreshToken)).build();
+
     }
 
     @POST
@@ -99,8 +96,9 @@ public class AuthResource {
         if (authHeader == null || !authHeader.startsWith(BEARER_TOKEN_PREFIX)) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        String accessToken = authHeader.substring(BEARER_TOKEN_PREFIX.length());
+        String accessToken = tokenService.getBearerToken(authHeader);
         authService.logout(accessToken);
-        return Response.noContent().build();
+        return Response.noContent().entity("User logout").build();
     }
+
 }
