@@ -1,0 +1,39 @@
+### Register User
+POST http://localhost:8300/auth/register
+Content-Type: application/json
+
+{
+  "login": "JackZhong",
+  "email":  "Jack@jack.com",
+  "password": "Jack123",
+  "roleIds": [1, 3]
+}
+
+### Login again and update the token
+POST http://localhost:8300/auth/login
+Content-Type: application/json
+
+{
+  "email":  "Jack@jack.com",
+  "password": "Jack123123"
+}
+
+> {%
+    client.global.set("access-token", response.body.access_token);
+    client.global.set("refresh-token", response.body.refresh_token);
+%}
+
+### Query the Demo endpoint after password change
+GET http://localhost:8300/test/me
+Authorization: Bearer {{access-token}}
+
+GET http://localhost:8300/test/admin
+Authorization: Bearer {{access-token}}
+
+
+### Get access token form refresh token
+POST http://localhost:8300/auth/login
+Content-Type: application/json
+Authorization: Bearer {{refresh-token}}
+
+{}
